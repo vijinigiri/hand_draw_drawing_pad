@@ -46,9 +46,10 @@ def draw(shape,x1,x2,y1,y2,color,thickness):
 
 
 def select_option(x1,y1):
-    global colors,n,shapes_active,text,division,dct,grid_lines,grid_check
+    global colors,n,shapes_active,text,division,dct,grid_lines,grid_check,width
     m=0
     if y1<100:
+        print(1)
         if y1<50:
             try:
                 for i in range(1,len(colors)+1):
@@ -58,6 +59,8 @@ def select_option(x1,y1):
                         m,n=1,i
                     else:
                         colors[i][2]=10
+                if x1>(width-100):
+                    undo()
                 if m==0:
                     colors[n][2]=12
             except Exception as e:
@@ -113,7 +116,10 @@ def nav_bar(nav):
         nav_img[:]=(0,0,0)
         # colors
         for i,j in colors.items():
-            cv2.circle(nav_img,((i)*division,25),j[2],j[1],-1)    
+            cv2.circle(nav_img,((i)*division,25),j[2],j[1],-1)   
+
+        cv2.putText(nav_img, 'undo', (width-100,25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, dct['color'],1, cv2.LINE_AA)
+
         # shapes
         cv2.line(nav_img,(30,15+50),(division+5,35+50),dct['color'],shapes_active[0])
         cv2.rectangle(nav_img, (2*division,15+50), (3*division,35+50),dct['color'], shapes_active[1])
@@ -122,7 +128,7 @@ def nav_bar(nav):
         cv2.putText(nav_img, 'text', (5*division,29+50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, dct['color'],1*int(shapes_active[3]/2), cv2.LINE_AA)
         cv2.putText(nav_img, 'erase', (6*division+5,29+50), cv2.FONT_HERSHEY_SIMPLEX, 0.5 , dct['color'],1*int(shapes_active[4]/2), cv2.LINE_AA)
         cv2.putText(nav_img, 'marker', (8*division,29+50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, dct['color'],1*int(shapes_active[5]/2), cv2.LINE_AA)
-        cv2.putText(nav_img, 'grid', (10*division,29+50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, dct['color'],1, cv2.LINE_AA)
+        cv2.putText(nav_img, 'lines', (10*division-5,29+50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, dct['color'],1, cv2.LINE_AA)
         
         cv2.putText(nav_img, f'thickness :{dct['thickness']}', (11*division,29+50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, dct['color'],1, cv2.LINE_AA)
         cv2.line(nav_img,(14*division,75),(division*19,75),dct['color'],shapes_active[0])
@@ -157,11 +163,21 @@ def grid(grid_check):
             cv2.line(img_grid,(0,i),(width,i),(100,100,100),1)
     return 0
 
+# --------------------------------------------
+
+def clear():
+    global img,prev_img
+    prev_img = img.copy()
+    img = np.full((height,width,3),background_color,dtype=np.uint8)
+def undo():
+    global img,prev_img
+    img=prev_img.copy()
+
 # ------------------------------------------
 
 def track(event,x,y):
     global x1, y1
-    global img,img_show,img_grid,img_nav_bar,background_img,img_pointer
+    global img,img_show,img_grid,img_nav_bar,background_img,img_pointer,img_s
     global height,width,background_color,count,count1
     global a,b,c,d,dct,text,lst,points,tab
     global prev_img,grid_check,nav,pointer_color
@@ -222,8 +238,8 @@ def track(event,x,y):
     nav,img_nav_bar = nav_bar(nav)
     grid_check = grid(grid_check)
     img[:102] = img_nav_bar
-    img_show = cv2.add(img , img_grid)
-    img_show = cv2.add(img_show,img_pointer)
+    img_s = cv2.add(img , img_grid)
+    img_show = cv2.add(img_s,img_pointer)
     img_pointer = background_img.copy()
 
 # ----------------------------------------------
@@ -258,6 +274,28 @@ def create_folder():
     if not os.path.exists(new_floder_path):
         os.makedirs(new_floder_path)
     return new_floder_path
+# -------------------------------------------------
+
+def save_img(img):
+    global folder_path,img_count
+    if os.path.exists(folder_path):
+        file_path = os.path.join(folder_path, 'drawing')
+        if not os.path.exists(file_path+str(img_count)+'.jpg'):
+            cv2.imwrite(file_path+str(img_count)+'.jpg',img[102:,])
+            img_count+=1
+            print('img saved')
+        else:
+            img_count = find_path(file_path,img_count)
+            cv2.imwrite(file_path+str(img_count)+'.jpg',img[102:])
+            print('img saved')
+    else:
+        print('given path is invalid')
+        floder_path = create_folder()
+        print(f'file will be stored in {floder_path}')
+        file_path = os.path.join(floder_path, 'drawing')
+        img_count = find_path(file_path,img_count)
+        cv2.imwrite(file_path+str(img_count)+'.jpg',img[102:])
+        print('img saved')
 
 # --------------------------------------------
 
@@ -266,9 +304,9 @@ background_color = (0,0,0)
 lst = []
 text = False
 tab,t1 = 0,0
-floder_path = ''  # path to save drawings
+folder_path = ''  # path to save drawings
 img_count = 1
-colors = {1:["red",(0,0,255),15],2:['green',(0,255,0),10],3:['blue',(255,0,0),10],4:["white",(255,255,255),10],5:["yellow",(0,225,255),10],6:["orange",(0, 165, 255),10]}
+colors = {1:["red",(0,0,255),15],2:["orange",(0, 165, 255),10],3:["yellow",(0,225,255),10],4:['green',(0,255,0),10],5:['blue',(255,0,0),10],6:["violet",(238,130,238),10],7:["white",(255,255,255),10],8:['Blue-green',(255,255,0),10]}
 dct = {"parameters" : "marker","thickness":3,"color":(0,0,255)}
 shapes_active = np.full(6,2)
 img = np.full((height,width,3),background_color,dtype=np.uint8)
@@ -278,6 +316,8 @@ img_grid = img.copy()
 prev_img = img.copy()
 background_img = img.copy()
 img_pointer = img.copy()
+img_follow = img.copy()
+img_s=""
 pointer_color = dct['color']
 detector = HandDetector(detectionCon=0.8 , maxHands=2)
 video = cv2.VideoCapture(0)
@@ -285,32 +325,17 @@ prev_lenght,min_length = 0,50
 cv2.namedWindow("drawing_pad")
 cv2.setMouseCallback("drawing_pad",mouse_tracking)
 vid = cv2.VideoCapture(0)
-a=0
+patience,co,a,z =0,0,False,False
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+follow,faces = False,[]
 while True:
     # t1 = time.time()
     key = cv2.waitKey(1)
     try:
-        if ((key >= 65 and key <= 122) or (key>=45 and key<=57)) :
+        if ((key >= 65 and key <= 122) or (key>=45 and key<=57) or key==32) :
                 lst.append(chr(key))
         if key == ord('s') and not text:
-            if os.path.exists(floder_path):
-                file_path = os.path.join(floder_path, 'drawing')
-                if not os.path.exists(file_path+str(img_count)+'.jpg'):
-                    cv2.imwrite(file_path+str(img_count)+'.jpg',img[102:,])
-                    img_count+=1
-                    print('img saved')
-                else:
-                    img_count = find_path(file_path,img_count)
-                    cv2.imwrite(file_path+str(img_count)+'.jpg',img[102:])
-                    print('img saved')
-            else:
-                print('given path is invalid')
-                floder_path = create_folder()
-                print(f'file will be stored in {floder_path}')
-                file_path = os.path.join(floder_path, 'drawing')
-                img_count = find_path(file_path,img_count)
-                cv2.imwrite(file_path+str(img_count)+'.jpg',img[102:])
-                print('img saved')
+            save_img(img_s)
             lst.clear()
         elif key == 13 and not text: # enter
             if lst[0] == 't' and len(lst)>1:
@@ -320,20 +345,29 @@ while True:
             tab = 1
         elif key == 8: # (back space ) clear text 
                 lst.pop()
+
     # -------------------------------------------
+
         ret,frame = video.read()
+        # if follow:
+        #     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        #     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=5, minSize=(30, 30))
+
         frame = cv2.resize(cv2.flip(frame,1), (width+200, height+200))
         hands,img_hand=detector.findHands(frame)
         if hands:
             x,y = hands[0]['center']
             lmlist = hands[0]
+            fingers = detector.fingersUp(lmlist)
             length, info,img_hand = detector.findDistance(lmlist["lmList"][4][:2], lmlist["lmList"][8][:2],img_hand)
+            
+
             if (prev_lenght >= min_length and length < min_length):
                 event=1
-                a=1
+                a=True
             elif (prev_lenght < min_length and length >= min_length):
                 event=4
-                a=0
+                a=False
             else:
                 event=0
 
@@ -344,18 +378,51 @@ while True:
 
             prev_lenght = length
             track(event,x-100,y-100)
-            if a==1:
+            # -------------------------------------------------------------
+
+            if z:
+                if fingers == [0,0,0,0,0] or fingers == [1,0,0,0,0]:
+                    patience+=1
+                if (patience<10 and patience>5) and fingers==[1,1,1,1,1]:
+                    clear()
+                    z=False
+                elif (patience<50 and patience>10) and fingers==[1,1,1,1,1]:
+                    save_img(img_s)
+                    z=False
+                if patience<50 and patience>10:
+                    cv2.rectangle(img_show, (0,102), (width,height),(255,255,255), 5)
+                if patience>50:
+                    follow = True
+                    
+            if patience>50:
+                z=False
+            if fingers == [1,1,1,1,1]:
+                z=True
+                patience=0
+
+            # ---------------------------------------------------------------------
+            
+            if a:
                 cv2.putText(img_hand,'activate',(20,460), cv2.FONT_HERSHEY_COMPLEX,1,(0,0,255),1,cv2.LINE_AA)
             else:
                 cv2.putText(img_hand,'',(20,460), cv2.FONT_HERSHEY_COMPLEX,1,(0,0,255),1,cv2.LINE_AA)
-            
+
     # ----------------------------------------------
     except Exception as e:
         print('invalid value')
         lst.clear()
         print(e)
     cv2.imshow("Frame",img_hand[:-200])
+    
     cv2.imshow("drawing_pad",img_show)
+    # if follow and not len(faces):
+    #     co+=1
+    #     if co>len(colors):
+    #         co=1
+    #     cv2.putText(img_follow,"FOLLOW FOR MORE" , (100,300), cv2.FONT_HERSHEY_SIMPLEX, 2, colors[co][1], 3, cv2.LINE_AA)
+    #     cv2.imshow("drawing_pad",img_follow)
+        
+    
     if key == 0:
         break
     # print(time.time()-t1)
