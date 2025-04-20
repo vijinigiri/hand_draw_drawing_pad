@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 import os
 from cvzone.HandTrackingModule import HandDetector
-import time
 
 # ---------------------------------------
 
@@ -167,11 +166,11 @@ def grid(grid_check):
 
 def clear():
     global img,prev_img
-    prev_img = img.copy()
-    img = np.full((height,width,3),background_color,dtype=np.uint8)
+    prev_img[:] = img
+    img[:] = (0,0,0)
 def undo():
     global img,prev_img
-    img=prev_img.copy()
+    img[:]=prev_img
 
 # ------------------------------------------
 
@@ -179,7 +178,7 @@ def track(event,x,y):
     global x1, y1
     global img,img_show,img_grid,img_nav_bar,background_img,img_pointer,img_s
     global height,width,background_color,count,count1
-    global a,b,c,d,dct,text,lst,points,tab
+    global a,b,c,d,dct,text,lst,points,tab,prev_x,prev_y
     global prev_img,grid_check,nav,pointer_color
 
     if event==1:
@@ -187,7 +186,7 @@ def track(event,x,y):
         lst.clear()
         x1,y1,b = x,y,1
         select_option(x1,y1)
-        prev_img = img.copy()
+        prev_img[:] = img
         if pointer_color == (0,0,255):
             pointer_color = (255,255,255)
         else:
@@ -195,8 +194,9 @@ def track(event,x,y):
     elif event == 4:
         pointer_color = dct['color']
         b=0
+        prev_x, prev_y = 0, 0
     if text:
-        img = prev_img.copy()
+        img[:] = prev_img
         cv2.putText(img, ''.join(lst), (x1,y1), cv2.FONT_HERSHEY_SIMPLEX, 1, dct['color'], dct['thickness'], cv2.LINE_AA)
         if event==1:
             cv2.putText(img, ''.join(lst), (x1,y1), cv2.FONT_HERSHEY_SIMPLEX, 1, dct['color'], dct['thickness'], cv2.LINE_AA)
@@ -208,27 +208,33 @@ def track(event,x,y):
             nav = 1
             thickness_bar(x,y)
         elif dct["parameters"]=="marker":
-            cv2.circle(img,(x,y),dct['thickness'],dct['color'],-1)
+            if prev_x == 0 and prev_y == 0:
+                prev_x, prev_y = x, y
+            cv2.line(img, (prev_x, prev_y), (x, y), dct['color'], dct['thickness'])
+            prev_x, prev_y = x, y
             points.append((x,y))
-            if ((c == x and d==y) or tab) and len(points)>10:
+            if ((abs(c - x) < 5 and abs(d - y) < 5) or tab) and len(points) > 10:
                 if count >=5 or tab:
                     count = 0 
                     if is_line(np.array(points)):
-                        img = prev_img.copy()
+                        img[:] = prev_img
                         draw(shape = "line", x1 = x1,x2 = x,y1 = y1,y2 = y,color = dct['color'],thickness = dct['thickness'])
                     else:
                         is_c = is_circle(np.array(points))
                         if is_c[0]:
-                            img = prev_img.copy()
+                            img[:] = prev_img
                             draw(shape = "circle", x1 = x1,x2 = is_c[1][0],y1 = y1,y2 = is_c[1][1],color = dct['color'],thickness = dct['thickness'])
                 count +=1
             count1=count1+1
         elif dct["parameters"] == "erase":
-            cv2.circle(img,(x,y),dct['thickness'],background_color,-1)
+            if prev_x == 0 and prev_y == 0:
+                prev_x, prev_y = x, y
+            cv2.line(img, (prev_x, prev_y), (x, y), (0,0,0), dct['thickness'])
+            prev_x, prev_y = x, y
         tab = 0
     if y1>100:
         if b == 1 and dct["parameters"]!="marker" and dct["parameters"]!="erase":
-            img = prev_img.copy()
+            img[:] = prev_img
             draw(shape = dct["parameters"], x1 = x1,x2 = x,y1 = y1,y2 = y,color = dct['color'],thickness = dct['thickness']) 
     
     if dct['thickness']<1:
@@ -238,9 +244,9 @@ def track(event,x,y):
     nav,img_nav_bar = nav_bar(nav)
     grid_check = grid(grid_check)
     img[:102] = img_nav_bar
-    img_s = cv2.add(img , img_grid)
-    img_show = cv2.add(img_s,img_pointer)
-    img_pointer = background_img.copy()
+    img_s = cv2.addWeighted(img, 1, img_grid, 1, 0)
+    img_show = cv2.addWeighted(img_s, 1, img_pointer, 1, 0)
+    img_pointer[:] = background_img
 
 # ----------------------------------------------
 
@@ -325,11 +331,11 @@ prev_lenght,min_length = 0,50
 cv2.namedWindow("drawing_pad")
 cv2.setMouseCallback("drawing_pad",mouse_tracking)
 vid = cv2.VideoCapture(0)
-patience,co,a,z =0,0,False,False
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+patience,a,z =0,False,False
 follow,faces = False,[]
+smooth_x,smooth_y = 0,0
+prev_x,prev_y = 0,0
 while True:
-    # t1 = time.time()
     key = cv2.waitKey(1)
     try:
         if ((key >= 65 and key <= 122) or (key>=45 and key<=57) or key==32) :
@@ -349,18 +355,16 @@ while True:
     # -------------------------------------------
 
         ret,frame = video.read()
-        # if follow:
-        #     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        #     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=5, minSize=(30, 30))
-
-        frame = cv2.resize(cv2.flip(frame,1), (width+200, height+200))
+        frame = cv2.flip(frame,1)
+        frame = cv2.resize(frame, (width+200, height+200))
         hands,img_hand=detector.findHands(frame)
         if hands:
             x,y = hands[0]['center']
             lmlist = hands[0]
             fingers = detector.fingersUp(lmlist)
             length, info,img_hand = detector.findDistance(lmlist["lmList"][4][:2], lmlist["lmList"][8][:2],img_hand)
-            
+            smooth_x = int(smooth_x * 0.5 + (x - 100) * 0.5)
+            smooth_y = int(smooth_y * 0.5 + (y - 100) * 0.5)
 
             if (prev_lenght >= min_length and length < min_length):
                 event=1
@@ -372,33 +376,27 @@ while True:
                 event=0
 
             if x<100:
-                x=0
+                smooth_x=0
             if y<100:
-                y=0
+                smooth_y=0
 
             prev_lenght = length
-            track(event,x-100,y-100)
+            track(event,smooth_x,smooth_y)
             # -------------------------------------------------------------
 
             if z:
                 if fingers == [0,0,0,0,0] or fingers == [1,0,0,0,0]:
                     patience+=1
-                if (patience<10 and patience>5) and fingers==[1,1,1,1,1]:
-                    clear()
-                    z=False
                 elif (patience<50 and patience>10) and fingers==[1,1,1,1,1]:
-                    save_img(img_s)
+                    clear()
                     z=False
                 if patience<50 and patience>10:
                     cv2.rectangle(img_show, (0,102), (width,height),(255,255,255), 5)
-                if patience>50:
-                    follow = True
-                    
-            if patience>50:
-                z=False
-            if fingers == [1,1,1,1,1]:
+            elif fingers == [1,1,1,1,1]:
                 z=True
-                patience=0
+                patience=0  
+            elif patience>50:
+                z=False
 
             # ---------------------------------------------------------------------
             
@@ -413,16 +411,7 @@ while True:
         lst.clear()
         print(e)
     cv2.imshow("Frame",img_hand[:-200])
-    
-    cv2.imshow("drawing_pad",img_show)
-    # if follow and not len(faces):
-    #     co+=1
-    #     if co>len(colors):
-    #         co=1
-    #     cv2.putText(img_follow,"FOLLOW FOR MORE" , (100,300), cv2.FONT_HERSHEY_SIMPLEX, 2, colors[co][1], 3, cv2.LINE_AA)
-    #     cv2.imshow("drawing_pad",img_follow)
-        
-    
+    cv2.imshow("drawing_pad",img_show)    
     if key == 0:
         break
     # print(time.time()-t1)
